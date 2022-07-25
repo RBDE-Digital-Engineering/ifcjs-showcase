@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "@rollup/plugin-node-resolve": "^13.3.0",
+    "rollup": "^2.77.0",
+    "three": "^0.135.0",
+    "web-ifc-viewer": "^1.0.207"
+  },
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  },
+  "name": "example-merge",
+  "version": "1.0.0",
+  "description": "merging all the notion.so exampless",
+  "main": "rollup.config.js",
+  "devDependencies": {},
+  "author": "Lukas Schmid",
+  "license": "MIT"
+}

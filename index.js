@@ -15,58 +15,52 @@ const viewer = new IfcViewerAPI({ container, backgroundColor: new Color(0xffffff
 viewer.grid.setGrid();
 viewer.axes.setAxes();
 
-
-
-async function logAllSlabs(ifcManager) {
-    const slabsID = await ifcManager.getAllItemsOfType(modelID, IFCSLAB);
-
-    for (let i = 0; i <= slabsID.length; i++) {
-        const slabID = slabsID[i];
-        const slabProperties = await ifcManager.getItemProperties(0, slabID);
-        console.log(slabProperties);
-    }
-}
-
 const input = document.getElementById("file-input");
 
 async function unloadModel(){
+    // remove existing models from scene
     for(let ifcModel of viewer.IFC.context.items.ifcModels){
         viewer.IFC.context.getScene().remove(ifcModel)
         ifcModel = undefined
     }
     viewer.IFC.context.items.ifcModels = []
     viewer.IFC.context.items.pickableIfcModels = []
+    
+    // Recreate the scene
     viewer.IFC.context.scene = new IfcScene(viewer.IFC.context)
     viewer.grid.setGrid();
     viewer.axes.setAxes();
-
+    // Recreate the selector
     viewer.IFC.selector = new IfcSelector(viewer.IFC.context, viewer.IFC);
 }
 
+// when a new local file gets selected
 input.addEventListener(
     "change",
     async (changed) => {
-        const ifcURL = URL.createObjectURL(changed.target.files[0]);
-
+        // Unload any previously loaded models
         unloadModel()
-
+        
+        // Load model
+        const ifcURL = URL.createObjectURL(changed.target.files[0]);
         const model = await viewer.IFC.loadIfcUrl(ifcURL, false, (progressEvent) => console.log(progressEvent))
-        console.log(model)
+
+        // Update currently active modelID
         modelID = model.modelID
         await viewer.shadowDropper.renderShadow(modelID)
 
+        // Recreate IFC project hierarchy
         const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
         createTreeMenu(ifcProject);
     },
     false
 );
 
-
+// Load of the inital example model
 async function loadIfc(url) {
     await viewer.IFC.setWasmPath("../../../")
     const model = await viewer.IFC.loadIfcUrl(url)
     await viewer.shadowDropper.renderShadow(model.modelID)
-    // await logAllSlabs(viewer.IFC.ifcManager);
 
     const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
     createTreeMenu(ifcProject);
@@ -74,31 +68,18 @@ async function loadIfc(url) {
 
 loadIfc('IFC/decomposition.ifc')
 
-
-// async function pick(event) {
-//     const found = cast(event)[0];
-//     if (found) {
-//         const index = found.faceIndex;
-//         const geometry = found.object.geometry;
-//         const ifc = ifcLoader.ifcManager;
-//         const id = ifc.getExpressId(geometry, index);
-//         const modelID = found.object.modelID;
-//         const props = await ifc.getItemProperties(modelID, id);
-//         output.innerHTML = JSON.stringify(props, null, 2);
-//     }
-// }
-
-
+//doubleclicking anywhere
 window.ondblclick = async () => {
     const result = await viewer.IFC.selector.highlightIfcItem()
     await viewer.IFC.selector.pickIfcItem()
     if (!result) {
+        // if no model part was hit
         viewer.IFC.selector.unHighlightIfcItems()
         viewer.IFC.selector.unpickIfcItems()
-        console.log("Unpicking picked item")
         removeAllChildren(document.getElementById("ifc-property-menu-root"))
         return
     }
+    // if hit, highlight model and get properties
     const { modelID, id } = result
 
     const props = await viewer.IFC.getProperties(modelID, id, true, false)
@@ -106,6 +87,7 @@ window.ondblclick = async () => {
 };
 
 window.onmousemove = async (event) => {
+    // highlight hovered models while not in hierarchy
     if (event.target.tagName !== "li")
         viewer.IFC.selector.prePickIfcItem();
 }
@@ -114,8 +96,6 @@ window.onmousemove = async (event) => {
 const propsGUI = document.getElementById("ifc-property-menu-root");
 
 function createPropertiesMenu(properties) {
-    console.log(properties);
-
     removeAllChildren(propsGUI);
 
     const psets = properties.psets;
@@ -223,7 +203,6 @@ function createSimpleChild(parent, node) {
 
     childNode.onmouseenter = () => {
         viewer.IFC.selector.prepickIfcItemsByID(0, [node.expressID]);
-        console.log("mouse entered child")
         childNode.classList.add('hovered-child')
     }
 
@@ -233,7 +212,6 @@ function createSimpleChild(parent, node) {
 
     childNode.onclick = async () => {
         viewer.IFC.selector.pickIfcItemsByID(0, [node.expressID])
-        console.log("mouse clicked child")
         const props = await viewer.IFC.getProperties(modelID, node.expressID, true, false)
         createPropertiesMenu(props)
     }

@@ -121446,7 +121446,7 @@ viewer.axes.setAxes();
 
 
 async function loadIfc(url) {
-    await viewer.IFC.setWasmPath("../../../");
+    await viewer.IFC.setWasmPath("./");
     const model = await viewer.IFC.loadIfcUrl(url);
     await viewer.shadowDropper.renderShadow(model.modelID);
     // await logAllSlabs(viewer.IFC.ifcManager);

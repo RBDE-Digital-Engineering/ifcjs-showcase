@@ -1,10 +1,14 @@
-import { Color } from 'three';
-import { IfcViewerAPI } from 'web-ifc-viewer';
-import { IFCSLAB } from "web-ifc";
+import { Color } from 'three'
+import { IfcViewerAPI } from 'web-ifc-viewer'
+import { IFCSLAB } from "web-ifc"
+import { IFCLoader } from "web-ifc-three/IFCLoader";
+import { IfcContext, IfcManager } from 'web-ifc-viewer/dist/components';
+import { IfcScene } from 'web-ifc-viewer/dist/components/context/scene';
+import { IfcSelector } from 'web-ifc-viewer/dist/components/ifc/selection/selector';
 
 
 
-const modelID = 0;
+let modelID = 0;
 
 const container = document.getElementById('viewer-container');
 const viewer = new IfcViewerAPI({ container, backgroundColor: new Color(0xffffff) });
@@ -23,19 +27,52 @@ async function logAllSlabs(ifcManager) {
     }
 }
 
+const input = document.getElementById("file-input");
+
+async function unloadModel(){
+    for(let ifcModel of viewer.IFC.context.items.ifcModels){
+        viewer.IFC.context.getScene().remove(ifcModel)
+        ifcModel = undefined
+    }
+    viewer.IFC.context.items.ifcModels = []
+    viewer.IFC.context.items.pickableIfcModels = []
+    viewer.IFC.context.scene = new IfcScene(viewer.IFC.context)
+    viewer.grid.setGrid();
+    viewer.axes.setAxes();
+
+    viewer.IFC.selector = new IfcSelector(viewer.IFC.context, viewer.IFC);
+}
+
+input.addEventListener(
+    "change",
+    async (changed) => {
+        const ifcURL = URL.createObjectURL(changed.target.files[0]);
+
+        unloadModel()
+
+        const model = await viewer.IFC.loadIfcUrl(ifcURL, false, (progressEvent) => console.log(progressEvent))
+        console.log(model)
+        modelID = model.modelID
+        await viewer.shadowDropper.renderShadow(modelID)
+
+        const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
+        createTreeMenu(ifcProject);
+    },
+    false
+);
 
 
 async function loadIfc(url) {
-    await viewer.IFC.setWasmPath("../../../");
-    const model = await viewer.IFC.loadIfcUrl(url);
-    await viewer.shadowDropper.renderShadow(model.modelID);
+    await viewer.IFC.setWasmPath("../../../")
+    const model = await viewer.IFC.loadIfcUrl(url)
+    await viewer.shadowDropper.renderShadow(model.modelID)
     // await logAllSlabs(viewer.IFC.ifcManager);
 
-    const ifcProject = await viewer.IFC.getSpatialStructure(modelID);
+    const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
     createTreeMenu(ifcProject);
 }
 
-loadIfc('IFC/decomposition.ifc');
+loadIfc('IFC/decomposition.ifc')
 
 
 // async function pick(event) {
@@ -69,7 +106,7 @@ window.ondblclick = async () => {
 };
 
 window.onmousemove = async (event) => {
-    if(event.target.tagName !== "li")
+    if (event.target.tagName !== "li")
         viewer.IFC.selector.prePickIfcItem();
 }
 

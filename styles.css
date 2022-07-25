@@ -8,6 +8,13 @@ html, body {
     overflow: hidden;
 }
 
+#file-input {
+    position:absolute;
+    top:0;
+    left:50vw;
+    z-index: 9001;
+}
+
 #viewer-container {
     position: fixed;
     top: 0;

@@ -58,9 +58,10 @@ input.addEventListener(
 
 // Load of the inital example model
 async function loadIfc(url) {
-    await viewer.IFC.setWasmPath("../../../")
-    const model = await viewer.IFC.loadIfcUrl(url)
-    await viewer.shadowDropper.renderShadow(model.modelID)
+    await viewer.IFC.setWasmPath("./");
+    const model = await viewer.IFC.loadIfcUrl(url);
+    await viewer.shadowDropper.renderShadow(model.modelID);
+    // await logAllSlabs(viewer.IFC.ifcManager);
 
     const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
     createTreeMenu(ifcProject);

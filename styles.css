@@ -105,3 +105,10 @@ ul, #myUL {
 .hovered-child {
     background-color: #f7f70085;
 }
+
+
+@media only screen and (max-width: 600px) {
+    .ifc-tree-menu {
+        display: none;
+    }
+  }

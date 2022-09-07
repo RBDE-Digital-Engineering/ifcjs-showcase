@@ -15,53 +15,48 @@ const viewer = new IfcViewerAPI({ container, backgroundColor: new Color(0xffffff
 viewer.grid.setGrid();
 viewer.axes.setAxes();
 
-
-
-async function logAllSlabs(ifcManager) {
-    const slabsID = await ifcManager.getAllItemsOfType(modelID, IFCSLAB);
-
-    for (let i = 0; i <= slabsID.length; i++) {
-        const slabID = slabsID[i];
-        const slabProperties = await ifcManager.getItemProperties(0, slabID);
-        console.log(slabProperties);
-    }
-}
-
 const input = document.getElementById("file-input");
 
 async function unloadModel(){
+    // remove existing models from scene
     for(let ifcModel of viewer.IFC.context.items.ifcModels){
         viewer.IFC.context.getScene().remove(ifcModel)
         ifcModel = undefined
     }
     viewer.IFC.context.items.ifcModels = []
     viewer.IFC.context.items.pickableIfcModels = []
+    
+    // Recreate the scene
     viewer.IFC.context.scene = new IfcScene(viewer.IFC.context)
     viewer.grid.setGrid();
     viewer.axes.setAxes();
-
+    // Recreate the selector
     viewer.IFC.selector = new IfcSelector(viewer.IFC.context, viewer.IFC);
 }
 
+// when a new local file gets selected
 input.addEventListener(
     "change",
     async (changed) => {
-        const ifcURL = URL.createObjectURL(changed.target.files[0]);
-
+        // Unload any previously loaded models
         unloadModel()
-
+        
+        // Load model
+        const ifcURL = URL.createObjectURL(changed.target.files[0]);
         const model = await viewer.IFC.loadIfcUrl(ifcURL, false, (progressEvent) => console.log(progressEvent))
-        console.log(model)
+
+        // Update currently active modelID
         modelID = model.modelID
         await viewer.shadowDropper.renderShadow(modelID)
 
+        // Recreate IFC project hierarchy
         const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
         createTreeMenu(ifcProject);
     },
     false
 );
 
-
+// Load of the inital example model
 async function loadIfc(url) {
     await viewer.IFC.setWasmPath("./");
     const model = await viewer.IFC.loadIfcUrl(url);
@@ -70,35 +65,25 @@ async function loadIfc(url) {
 
     const ifcProject = await viewer.IFC.getSpatialStructure(modelID)
     createTreeMenu(ifcProject);
+    await createIFCMenu(ifcProject);
 }
+
+//loads a default model
 
 loadIfc('IFC/decomposition.ifc')
 
-
-// async function pick(event) {
-//     const found = cast(event)[0];
-//     if (found) {
-//         const index = found.faceIndex;
-//         const geometry = found.object.geometry;
-//         const ifc = ifcLoader.ifcManager;
-//         const id = ifc.getExpressId(geometry, index);
-//         const modelID = found.object.modelID;
-//         const props = await ifc.getItemProperties(modelID, id);
-//         output.innerHTML = JSON.stringify(props, null, 2);
-//     }
-// }
-
-
+//doubleclicking anywhere
 window.ondblclick = async () => {
     const result = await viewer.IFC.selector.highlightIfcItem()
     await viewer.IFC.selector.pickIfcItem()
     if (!result) {
+        // if no model part was hit
         viewer.IFC.selector.unHighlightIfcItems()
         viewer.IFC.selector.unpickIfcItems()
-        console.log("Unpicking picked item")
         removeAllChildren(document.getElementById("ifc-property-menu-root"))
         return
     }
+    // if hit, highlight model and get properties
     const { modelID, id } = result
 
     const props = await viewer.IFC.getProperties(modelID, id, true, false)
@@ -106,16 +91,125 @@ window.ondblclick = async () => {
 };
 
 window.onmousemove = async (event) => {
+    // highlight hovered models while not in hierarchy
     if (event.target.tagName !== "li")
         viewer.IFC.selector.prePickIfcItem();
 }
+
+async function createIFCMenu(ifcTree) {
+
+    //Fachbereich, Objektgruppe, Untergruppe, Objekttyp
+    let hierarchy = await collectFDKEntries(ifcTree.children)
+    createFDKTree(hierarchy, ifcTree.children)
+    console.log(hierarchy)
+}
+
+function createFDKTree(fdkTree, ifcTree) {
+    let guiRoot = document.getElementById("ifc-tree-menu")
+    let guiTitle = document.createElement("h2")
+    guiTitle.innerText = "FDK-Struktur"
+    guiRoot.append(guiTitle)
+    addFDKLevels(fdkTree, guiRoot, ifcTree)
+}
+
+function addFDKLevels(fdkTree, htmlRoot, ifcTree) {
+    if (!fdkTree) return
+    if (htmlRoot === null) console.log(fdkTree)
+    for (let level of Object.keys(fdkTree)) {
+        let curdiv = document.createElement("ul")
+        let curcontent = document.createElement("li")
+        let text = document.createElement("span")
+        text.innerText = level
+        curcontent.append(text)
+
+        if (htmlRoot.id !== "ifc-tree-menu") curdiv.classList.add("nested")
+        // curdiv.classList.add("active")
+        curdiv.appendChild(curcontent)
+
+        if (fdkTree[level] !== null) {
+            text.classList.add("caret");
+            addFDKLevels(fdkTree[level], curcontent, ifcTree)
+            text.onclick = () => {
+                text.parentElement.querySelectorAll(".nested").forEach(htmlele => (text.parentElement === htmlele.parentElement)&&htmlele.classList.toggle("active"));
+                text.classList.toggle("caret-down");
+            }
+        } else {
+            text.onclick = () => {
+                viewer.IFC.selector.unHighlightIfcItems()
+                viewer.IFC.selector.unpickIfcItems()
+                highlightFDKMatches(ifcTree, text.innerText)
+            }
+        }
+        // text.onclick = () => {
+        //     title.parentElement.querySelector(".nested").classList.toggle("active");
+        //     title.classList.toggle("caret-down");
+        // }
+        htmlRoot.appendChild(curdiv)
+    }
+}
+
+async function collectFDKEntries(elementChildren, hierarchy = {}) {
+    for (let elementChild of elementChildren) {
+        // TODO don't use recursive, only get exact objects for psets
+        let ele_props = await viewer.IFC.getProperties(modelID, elementChild.expressID, true, true)
+
+        // console.log(slab_props)
+        for (let ele_prop_set of ele_props.psets) {
+            let props = Object.fromEntries(ele_prop_set.HasProperties.map(prop => [prop.Name.value, prop.NominalValue.value]))
+            // console.log(prop)
+
+            if (
+                Object.keys(props).includes("Fachbereich")
+                && Object.keys(props).includes("Objektgruppe")
+                && Object.keys(props).includes("Untergruppe")
+                && Object.keys(props).includes("Objekttyp")
+            ) {
+                // let propName = prop.Name.value
+                // let propValue = prop.NominalValue.value
+
+                // check for membership in selectedObjects
+                if (!hierarchy[props["Fachbereich"]]) hierarchy[props["Fachbereich"]] = {}
+                if (!hierarchy[props["Fachbereich"]][props["Objektgruppe"]]) hierarchy[props["Fachbereich"]][props["Objektgruppe"]] = {}
+                if (!hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]]) hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]] = {}
+                if (!hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]][props["Objekttyp"]]) hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]][props["Objekttyp"]] = null
+            }
+        }
+
+        if (Object.keys(hierarchy).length > 0) { }
+
+        if (elementChild.children && elementChild.children.length > 0) hierarchy = collectFDKEntries(elementChild.children, hierarchy)
+    }
+    return hierarchy
+}
+
+async function highlightFDKMatches(elementChildren, fdklevel_to_match) {
+    for (let elementChild of elementChildren) {
+        // TODO don't use recursive, only get exact objects for psets
+        let ele_props = await viewer.IFC.getProperties(modelID, elementChild.expressID, true, true)
+
+        // console.log(slab_props)
+        for (let ele_prop_set of ele_props.psets) {
+            let props = Object.fromEntries(ele_prop_set.HasProperties.map(prop => [prop.Name.value, prop.NominalValue.value]))
+            // console.log(prop)
+
+            if (
+                Object.keys(props).includes("Objekttyp") && props["Objekttyp"] === fdklevel_to_match
+            ) {
+                viewer.IFC.selector.highlightIfcItemsByID(modelID, [elementChild.expressID], false, false)
+                viewer.IFC.selector.pickIfcItemsByID(modelID, [elementChild.expressID], false, false)
+            }
+        }
+
+        if (elementChild.children && elementChild.children.length > 0) highlightFDKMatches(elementChild.children, fdklevel_to_match)
+    }
+}
+
+
 
 
 const propsGUI = document.getElementById("ifc-property-menu-root");
 
 function createPropertiesMenu(properties) {
-    console.log(properties);
-
     removeAllChildren(propsGUI);
 
     const psets = properties.psets;
@@ -157,18 +251,22 @@ function createPropertyEntry(key, value) {
     propsGUI.appendChild(propContainer);
 }
 
-const toggler = document.getElementsByClassName("caret");
-for (let i = 0; i < toggler.length; i++) {
-    toggler[i].onclick = () => {
-        toggler[i].parentElement.querySelector(".nested").classList.toggle("active");
-        toggler[i].classList.toggle("caret-down");
-    }
-}
+// const toggler = document.getElementsByClassName("caret");
+// console.log("found ", toggler.length, "togglers")
+// for (let i = 0; i < toggler.length; i++) {
+//     toggler[i].onclick = () => {
+//         toggler[i].parentElement.querySelector(".nested").classList.toggle("active");
+//         toggler[i].classList.toggle("caret-down");
+//     }
+// }
 
 // Spatial tree menu
 
 function createTreeMenu(ifcProject) {
     const root = document.getElementById("tree-root");
+    let guiTitle = document.createElement("h2")
+    guiTitle.innerText = "IFC-Struktur"
+    root.appendChild(guiTitle)
     removeAllChildren(root);
     const ifcProjectNode = createNestedChild(root, ifcProject);
     ifcProject.children.forEach(child => {
@@ -223,7 +321,6 @@ function createSimpleChild(parent, node) {
 
     childNode.onmouseenter = () => {
         viewer.IFC.selector.prepickIfcItemsByID(0, [node.expressID]);
-        console.log("mouse entered child")
         childNode.classList.add('hovered-child')
     }
 
@@ -232,8 +329,9 @@ function createSimpleChild(parent, node) {
     }
 
     childNode.onclick = async () => {
+        viewer.IFC.selector.unHighlightIfcItems()
+        viewer.IFC.selector.unpickIfcItems()
         viewer.IFC.selector.pickIfcItemsByID(0, [node.expressID])
-        console.log("mouse clicked child")
         const props = await viewer.IFC.getProperties(modelID, node.expressID, true, false)
         createPropertiesMenu(props)
     }

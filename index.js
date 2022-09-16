@@ -17,15 +17,15 @@ viewer.axes.setAxes();
 
 const input = document.getElementById("file-input");
 
-async function unloadModel(){
+async function unloadModel() {
     // remove existing models from scene
-    for(let ifcModel of viewer.IFC.context.items.ifcModels){
+    for (let ifcModel of viewer.IFC.context.items.ifcModels) {
         viewer.IFC.context.getScene().remove(ifcModel)
         ifcModel = undefined
     }
     viewer.IFC.context.items.ifcModels = []
     viewer.IFC.context.items.pickableIfcModels = []
-    
+
     // Recreate the scene
     viewer.IFC.context.scene = new IfcScene(viewer.IFC.context)
     viewer.grid.setGrid();
@@ -40,7 +40,7 @@ input.addEventListener(
     async (changed) => {
         // Unload any previously loaded models
         unloadModel()
-        
+
         // Load model
         const ifcURL = URL.createObjectURL(changed.target.files[0]);
         const model = await viewer.IFC.loadIfcUrl(ifcURL, false, (progressEvent) => console.log(progressEvent))
@@ -69,7 +69,7 @@ async function loadIfc(url) {
 
 //loads a default model
 
-loadIfc('IFC/decomposition.ifc')
+loadIfc('IFC/Werkleitungsmodell Bestand angereichert-rbb.ifc')
 
 //doubleclicking anywhere
 window.ondblclick = async () => {
@@ -115,6 +115,7 @@ function addFDKLevels(fdkTree, htmlRoot, ifcTree) {
     if (!fdkTree) return
     if (htmlRoot === null) console.log(fdkTree)
     for (let level of Object.keys(fdkTree)) {
+        // Create HTML Structure for current Treenodes
         let curdiv = document.createElement("ul")
         let curcontent = document.createElement("li")
         let text = document.createElement("span")
@@ -122,14 +123,15 @@ function addFDKLevels(fdkTree, htmlRoot, ifcTree) {
         curcontent.append(text)
 
         if (htmlRoot.id !== "ifc-tree-menu") curdiv.classList.add("nested")
-        // curdiv.classList.add("active")
         curdiv.appendChild(curcontent)
 
         if (fdkTree[level] !== null) {
             text.classList.add("caret");
+            // Repeat for all children and pass the the parent node to anchor to
             addFDKLevels(fdkTree[level], curcontent, ifcTree)
             text.onclick = () => {
-                text.parentElement.querySelectorAll(".nested").forEach(htmlele => (text.parentElement === htmlele.parentElement)&&htmlele.classList.toggle("active"));
+                // display/hide nested elements when parent is clicked
+                text.parentElement.querySelectorAll(".nested").forEach(htmlele => (text.parentElement === htmlele.parentElement) && htmlele.classList.toggle("active"));
                 text.classList.toggle("caret-down");
             }
         } else {
@@ -139,10 +141,6 @@ function addFDKLevels(fdkTree, htmlRoot, ifcTree) {
                 highlightFDKMatches(ifcTree, text.innerText)
             }
         }
-        // text.onclick = () => {
-        //     title.parentElement.querySelector(".nested").classList.toggle("active");
-        //     title.classList.toggle("caret-down");
-        // }
         htmlRoot.appendChild(curdiv)
     }
 }
@@ -152,10 +150,9 @@ async function collectFDKEntries(elementChildren, hierarchy = {}) {
         // TODO don't use recursive, only get exact objects for psets
         let ele_props = await viewer.IFC.getProperties(modelID, elementChild.expressID, true, true)
 
-        // console.log(slab_props)
+        // Check all propertysets for the hierarchy
         for (let ele_prop_set of ele_props.psets) {
             let props = Object.fromEntries(ele_prop_set.HasProperties.map(prop => [prop.Name.value, prop.NominalValue.value]))
-            // console.log(prop)
 
             if (
                 Object.keys(props).includes("Fachbereich")
@@ -163,10 +160,7 @@ async function collectFDKEntries(elementChildren, hierarchy = {}) {
                 && Object.keys(props).includes("Untergruppe")
                 && Object.keys(props).includes("Objekttyp")
             ) {
-                // let propName = prop.Name.value
-                // let propValue = prop.NominalValue.value
-
-                // check for membership in selectedObjects
+                // initalize if not exists
                 if (!hierarchy[props["Fachbereich"]]) hierarchy[props["Fachbereich"]] = {}
                 if (!hierarchy[props["Fachbereich"]][props["Objektgruppe"]]) hierarchy[props["Fachbereich"]][props["Objektgruppe"]] = {}
                 if (!hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]]) hierarchy[props["Fachbereich"]][props["Objektgruppe"]][props["Untergruppe"]] = {}
@@ -174,23 +168,24 @@ async function collectFDKEntries(elementChildren, hierarchy = {}) {
             }
         }
 
-        if (Object.keys(hierarchy).length > 0) { }
-
+        // Recurse if more children exist
         if (elementChild.children && elementChild.children.length > 0) hierarchy = collectFDKEntries(elementChild.children, hierarchy)
     }
     return hierarchy
 }
 
+// triggered on hierarchy element click
 async function highlightFDKMatches(elementChildren, fdklevel_to_match) {
     for (let elementChild of elementChildren) {
         // TODO don't use recursive, only get exact objects for psets
         let ele_props = await viewer.IFC.getProperties(modelID, elementChild.expressID, true, true)
 
-        // console.log(slab_props)
         for (let ele_prop_set of ele_props.psets) {
+            // turn hasProperties into a dictionary
             let props = Object.fromEntries(ele_prop_set.HasProperties.map(prop => [prop.Name.value, prop.NominalValue.value]))
-            // console.log(prop)
 
+            // if element properties match the hierarchy entry -> highlight
+            // TODO cache entry - object mapping for direct access
             if (
                 Object.keys(props).includes("Objekttyp") && props["Objekttyp"] === fdklevel_to_match
             ) {
@@ -199,12 +194,13 @@ async function highlightFDKMatches(elementChildren, fdklevel_to_match) {
             }
         }
 
+        // Recurse structure children
         if (elementChild.children && elementChild.children.length > 0) highlightFDKMatches(elementChild.children, fdklevel_to_match)
     }
 }
 
 
-
+// Props menu
 
 const propsGUI = document.getElementById("ifc-property-menu-root");
 
@@ -250,16 +246,8 @@ function createPropertyEntry(key, value) {
     propsGUI.appendChild(propContainer);
 }
 
-// const toggler = document.getElementsByClassName("caret");
-// console.log("found ", toggler.length, "togglers")
-// for (let i = 0; i < toggler.length; i++) {
-//     toggler[i].onclick = () => {
-//         toggler[i].parentElement.querySelector(".nested").classList.toggle("active");
-//         toggler[i].classList.toggle("caret-down");
-//     }
-// }
 
-// Spatial tree menu
+// Spatial Tree menu
 
 function createTreeMenu(ifcProject) {
     const root = document.getElementById("tree-root");
